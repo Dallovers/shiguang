@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f5f7f5"><meta name="description" content="让日常成为值得收藏的风景。拾光，一座只属于你的私人影像馆。"><title>拾光 · 私人影像馆</title><link rel="stylesheet" href="style.css"></head>
+<link rel="stylesheet" href="spatial.css">
+<body>
+<a class="skip" href="#stage">跳至相册</a>
+<header>
+  <a class="brand" href="./" aria-label="拾光首页"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><ellipse cx="20" cy="20" rx="17" ry="15"/><ellipse cx="20" cy="20" rx="12" ry="11"/><ellipse cx="20" cy="20" rx="7" ry="6"/><circle cx="20" cy="20" r="2"/></svg><span>拾光<small>私人影像馆</small></span></a>
+  <nav class="views" aria-label="相册视图"><button data-mode="ring" aria-pressed="true">年轮</button><button data-mode="stack" aria-pressed="false">叠影</button><button data-mode="gallery" aria-pressed="false">穿梭</button></nav>
+  <div class="header-actions"><button id="about" class="icon-button" aria-label="使用说明"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button><button id="import" class="primary"><span aria-hidden="true">＋</span> 导入照片</button></div>
+</header>
+<main>
+  <div class="collection-line"><div><span class="live-dot"></span><span id="collection-name">光的旅行</span><span class="divider">/</span><span id="photo-count">108 张示例照片</span></div><label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="寻找一段记忆" aria-label="搜索照片名称或日期"><kbd>/</kbd></label></div>
+  <section id="stage" tabindex="0" aria-label="照片年轮，拖动旋转，滚轮缩放，或使用下方按钮">
+    <div class="ambient-light" aria-hidden="true"></div><div id="world"></div><div id="flight-marker" hidden aria-hidden="true"><span>回忆深处</span><div class="flight-track"><i id="flight-progress"></i></div><span id="flight-count"></span></div>
+    <div id="center-note"><span class="small-line">生活，在此流转</span><h1>时光有迹</h1></div>
+    <div id="empty" hidden><h2>这里，等一段回忆</h2><p id="empty-text">试试其他年份或搜索词。</p><button id="reset-filter" class="soft-button">查看全部照片</button></div>
+    <div id="stack-caption" hidden><span id="stack-date"></span><h2 id="stack-title"></h2><p id="stack-number"></p></div>
+    <div id="scrubber-wrap" hidden><label for="scrubber">翻阅进度</label><input id="scrubber" type="range" min="0" max="107" value="0" step="1" aria-label="跳转到照片"></div>
+  </section>
+  <div class="bottom">
+    <div class="edition"><span id="edition-title">生活的形状</span><p id="edition-sub">把散落的日常，收成一圈年轮。</p></div>
+    <div class="timeline-wrap"><div id="timeline" aria-label="按年份筛选"></div><p class="hint" id="hint">拖动旋转<span>·</span>滚轮缩放<span>·</span>点击看大图</p></div>
+    <div class="tools"><button id="auto-motion" class="motion-button" aria-pressed="true">Ⅱ 暂停自转</button><button id="spread" class="motion-button" hidden aria-pressed="true">收拢照片</button><button id="prev" class="icon-button" aria-label="向左旋转或上一张">←</button><button id="next" class="icon-button" aria-label="向右旋转或下一张">→</button><span class="tool-separator"></span><button id="zoom-out" class="icon-button" aria-label="缩小">−</button><button id="zoom-in" class="icon-button" aria-label="放大">＋</button><button id="reset-view" class="icon-button" aria-label="重置视角">↺</button></div>
+  </div>
+</main>
+<footer><span>每一张，都算数。</span><div><button id="source-toggle">切换到我的相册</button><span class="footer-dot">·</span><button id="manage">相册管理</button><span class="local-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>照片仅保存在本机</span></div></footer>
+<input id="file-input" type="file" accept="image/*" multiple hidden><input id="folder-input" type="file" accept="image/*" webkitdirectory multiple hidden>
+<dialog id="viewer" aria-label="照片详情"><div class="viewer-top"><span id="viewer-index"></span><button id="close-viewer" class="icon-button" aria-label="关闭照片">✕</button></div><button id="viewer-prev" class="viewer-arrow" aria-label="上一张照片">←</button><img id="large-photo" alt=""><button id="viewer-next" class="viewer-arrow" aria-label="下一张照片">→</button><div class="viewer-bottom"><div><p id="viewer-date"></p><h2 id="viewer-title"></h2></div><button id="edit-photo" class="soft-button">编辑信息</button></div></dialog>
+<dialog id="info-dialog" class="sheet"><button class="close-sheet icon-button" aria-label="关闭">✕</button><span class="sheet-eyebrow">一座属于你的影像馆</span><h2>让回忆，有迹可循。</h2><p>年轮会缓慢自转，也可以拖动改变角度。叠影跟随指尖展开与收拢；进入穿梭，用滚轮或上下滑动，走进照片之间。</p><div class="info-row"><b>从你的相册开始</b><p>点击「导入照片」，在手机相册或电脑中选择照片。也可以把照片直接拖进页面。</p></div><div class="info-row"><b>回忆留在这里</b><p>照片只存储在当前浏览器，不会上传到服务器。清除浏览器数据会移除这里的照片，请保留原件。</p></div><div class="info-row"><b>关于照片日期</b><p>优先读取 JPEG 中的拍摄日期，其他照片使用文件修改日期。点开照片后可手动修改。</p></div><p class="fine">示例相册使用 Unsplash 风景照片，重复排布用于演示空间效果。</p><button class="primary close-sheet">开始拾光</button></dialog>
+<dialog id="manage-dialog" class="sheet"><button class="close-sheet icon-button" aria-label="关闭">✕</button><h2>我的相册</h2><p id="storage-count"></p><div class="manage-actions"><button id="add-more" class="primary">选择照片</button><button id="add-folder" class="soft-button">导入文件夹</button><button id="show-mine" class="soft-button">打开我的相册</button></div><p class="fine">建议每次导入不超过 200 张。照片保存在此浏览器，原始文件不会被修改。</p><div class="danger-zone"><button id="clear-library" class="danger">清空本地相册</button><p>仅删除此页面保存的副本。</p></div><div id="clear-confirm" hidden><p>确定移除本地保存的所有照片？此操作无法撤销。</p><button id="confirm-clear" class="danger">确定清空</button><button id="cancel-clear" class="soft-button">取消</button></div></dialog>
+<dialog id="edit-dialog" class="sheet"><button class="close-sheet icon-button" aria-label="关闭">✕</button><h2>为回忆留个名字</h2><form id="edit-form"><label>照片名称<input id="edit-title" maxlength="100" required></label><label>照片日期<input id="edit-date" type="date" required></label><p id="date-source" class="fine"></p><button type="submit" class="primary">保存</button></form></dialog>
+<div id="toast" role="status" aria-live="polite"></div><div id="import-progress" role="status" hidden><span id="progress-label">正在整理照片…</span><progress id="progress-bar" value="0" max="100"></progress></div><div id="drop-overlay" hidden>把照片放在这里<span>让新的回忆，加入年轮。</span></div>
+<script src="spatial.js"></script><script src="app.js"></script></body></html>
