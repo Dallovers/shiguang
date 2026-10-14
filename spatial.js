@@ -5,6 +5,8 @@ class SpatialAlbum {
     this.cards=[]; this.poses=[]; this.mode='ring'; this.width=1; this.height=1;
     this.phase=0; this.pitch=.23; this.pitchTarget=.23; this.spinVelocity=0;
     this.zoom=1; this.zoomTarget=1; this.travel=0; this.travelTarget=0;
+    this.roamX=0;this.roamY=0;this.roamXTarget=0;this.roamYTarget=0;
+    this.heading=0;this.headingTarget=0;this.elevation=0;this.elevationTarget=0;this.roamLook=false;
     this.position=0; this.target=0; this.expanded=true; this.spread=1;
     this.look={x:0,y:0}; this.pointer={x:0,y:0}; this.drag=null; this.suppressClick=false;
     this.reduced=matchMedia('(prefers-reduced-motion: reduce)'); this.auto=!this.reduced.matches;
@@ -16,6 +18,15 @@ class SpatialAlbum {
   setItems(cards,items) {
     this.cards=cards; this.items=items; this.poses=cards.map(()=>({x:0,y:0,z:-1200,rx:0,ry:0,rz:0,w:40,h:50,a:0}));
     this.position=this.target=0;this.travel=this.travelTarget=0;this.reportedIndex=-1;this.dirty=true;
+    this.roamX=this.roamY=this.roamXTarget=this.roamYTarget=0;
+    this.heading=this.headingTarget=this.elevation=this.elevationTarget=0;
+    // Stable, independent coordinates fill a volume, including its centre.
+    // No angular lanes, common radius, sequential depth or recycling around the camera.
+    this.cloud=items.map(item=>{
+      let state=2166136261;for(const c of item.id)state=Math.imul(state^c.charCodeAt(0),16777619);
+      const random=()=>{state+=0x6D2B79F5;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296};
+      return {x:random()-.5,y:random()-.5,z:random(),size:random(),angle:random()-.5};
+    });
     cards.forEach((card,i)=>{
       card.onclick=()=>{if(this.suppressClick)return;const selected=((Math.round(this.position)%this.cards.length)+this.cards.length)%this.cards.length;if(this.mode==='stack'&&i!==selected){this.setIndex(i)}else this.callbacks.select(i)};
       card.addEventListener('mouseenter',()=>{this.hover=true;this.wake()});
@@ -32,19 +43,26 @@ class SpatialAlbum {
     const spread=document.querySelector('#spread');spread.hidden=this.mode!=='stack';spread.textContent=this.expanded?'收拢照片':'展开照片';spread.setAttribute('aria-pressed',String(this.expanded));
     document.querySelector('#scrubber-wrap').hidden=this.mode!=='stack'||!this.cards.length;
     document.querySelector('#flight-marker').hidden=this.mode!=='gallery'||!this.cards.length;
+    document.querySelector('#roam-controls').hidden=this.mode!=='gallery'||!this.cards.length;
+    const look=document.querySelector('#roam-look');look.hidden=this.mode!=='gallery';look.setAttribute('aria-pressed',String(this.roamLook));look.textContent=this.roamLook?'切回平移':'环顾四周';
+    if(this.mode==='gallery')document.querySelector('#hint').textContent=this.roamLook?'拖动环顾 · 滚轮前后 · 点击看大图':'拖动上下左右漫游 · 滚轮前后 · 点击看大图';
     document.querySelector('#scrubber').max=Math.max(0,this.cards.length-1);
   }
   toggleAuto(){this.auto=!this.auto;this.updateControls();this.wake()}
   toggleSpread(){this.expanded=!this.expanded;this.updateControls();this.dirty=true;this.wake()}
-  step(d){if(!this.cards.length)return;if(this.mode==='ring'){this.phase+=d*.18;this.spinVelocity=d*.0008}else if(this.mode==='stack'){this.target=Math.round(this.target)+d}else this.travelTarget+=d*1.5;this.dirty=true;this.wake()}
+  step(d){if(!this.cards.length)return;if(this.mode==='ring'){this.phase+=d*.18;this.spinVelocity=d*.0008}else if(this.mode==='stack'){this.target=Math.round(this.target)+d}else this.moveFlight(0,0,d*.8);this.dirty=true;this.wake()}
+  flightBounds(){return {x:this.width<600?480:1100,y:720,depth:this.cards.length<8?1:9}}
+  clampFlight(){const b=this.flightBounds();this.roamXTarget=Math.max(-b.x,Math.min(b.x,this.roamXTarget));this.roamYTarget=Math.max(-b.y,Math.min(b.y,this.roamYTarget));this.travelTarget=Math.max(-1.5,Math.min(b.depth,this.travelTarget));this.headingTarget=Math.max(-.7,Math.min(.7,this.headingTarget));this.elevationTarget=Math.max(-.5,Math.min(.5,this.elevationTarget))}
+  moveFlight(x,y,z=0){this.roamXTarget+=x;this.roamYTarget+=y;this.travelTarget+=z;this.clampFlight();this.wake()}
+  toggleLook(){this.roamLook=!this.roamLook;this.updateControls()}
   setIndex(i){const n=this.cards.length;if(!n)return;const current=((this.position%n)+n)%n;let diff=i-current;if(diff>n/2)diff-=n;if(diff<-n/2)diff+=n;this.target=this.position+diff;this.wake()}
   zoomBy(d){this.zoomTarget=Math.max(.7,Math.min(3.8,this.zoomTarget+d));this.wake()}
-  reset(){this.phase=0;this.pitchTarget=.23;this.zoomTarget=1;this.target=0;this.travelTarget=0;this.spinVelocity=0;this.pointer={x:0,y:0};this.dirty=true;this.wake()}
+  reset(){this.phase=0;this.pitchTarget=.23;this.zoomTarget=1;this.target=0;this.travelTarget=0;this.roamXTarget=this.roamYTarget=this.headingTarget=this.elevationTarget=0;this.spinVelocity=0;this.pointer={x:0,y:0};this.dirty=true;this.wake()}
   bind(){
     const s=this.stage;
     s.addEventListener('pointerdown',e=>{
-      if(e.button!==0||e.target.closest('#scrubber-wrap'))return;
-      this.drag={id:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,t:performance.now(),velocity:0,phase:this.phase,pitch:this.pitchTarget,position:this.position,travel:this.travelTarget,moved:false};this.spinVelocity=0;
+      if(e.button!==0||e.target.closest('#scrubber-wrap, #roam-controls'))return;
+      this.drag={id:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,t:performance.now(),velocity:0,vx:0,vy:0,phase:this.phase,pitch:this.pitchTarget,position:this.position,travel:this.travelTarget,cameraX:this.roamXTarget,cameraY:this.roamYTarget,heading:this.headingTarget,elevation:this.elevationTarget,moved:false};this.spinVelocity=0;
       this.suppressClick=false;this.wake();
     });
     s.addEventListener('pointermove',e=>{
@@ -53,10 +71,10 @@ class SpatialAlbum {
         const dx=e.clientX-d.x,dy=e.clientY-d.y,now=performance.now();
         if(Math.hypot(dx,dy)>6){d.moved=true;this.suppressClick=true;s.classList.add('dragging');s.setPointerCapture(e.pointerId)}
         if(d.moved){
-          const dt=Math.max(8,now-d.t);d.velocity=.5*d.velocity+.5*((this.mode==='gallery'?d.lastY-e.clientY:e.clientX-d.lastX)/dt);d.lastX=e.clientX;d.lastY=e.clientY;d.t=now;
+          const dt=Math.max(8,now-d.t);d.vx=.5*d.vx+.5*(e.clientX-d.lastX)/dt;d.vy=.5*d.vy+.5*(e.clientY-d.lastY)/dt;d.velocity=d.vx;d.lastX=e.clientX;d.lastY=e.clientY;d.t=now;
           if(this.mode==='ring'){this.phase=d.phase+dx*.005;this.pitchTarget=Math.max(-.65,Math.min(.7,d.pitch+dy*.003))}
           else if(this.mode==='stack'){this.position=this.target=d.position-dx/(this.width<600?90:135)}
-          else this.travelTarget=d.travel-dy/110+dx/230;
+          else {if(this.roamLook){this.headingTarget=d.heading-dx*.0024;this.elevationTarget=d.elevation+dy*.0024}else{this.roamXTarget=d.cameraX-dx*2;this.roamYTarget=d.cameraY-dy*2}this.clampFlight()}
         }
       }this.wake();
     });
@@ -65,16 +83,16 @@ class SpatialAlbum {
         const v=performance.now()-d.t>90?0:d.velocity;
         if(this.mode==='ring')this.spinVelocity=Math.max(-.004,Math.min(.004,v*.003));
         else if(this.mode==='stack')this.target=Math.round(this.position-Math.max(-2.5,Math.min(2.5,v*.75)));
-        else this.travelTarget+=Math.max(-3,Math.min(3,v*.65));
+        else if(!this.roamLook){const fresh=performance.now()-d.t<90;this.moveFlight(fresh?-d.vx*110:0,fresh?-d.vy*110:0)}
       }
       this.drag=null;s.classList.remove('dragging');if(s.hasPointerCapture(e.pointerId))s.releasePointerCapture(e.pointerId);setTimeout(()=>this.suppressClick=false,100);this.wake();
     };
     s.addEventListener('pointerup',release);s.addEventListener('pointercancel',release);
     s.addEventListener('pointerleave',()=>{this.pointer={x:0,y:0};this.hover=false;this.wake()});
-    s.addEventListener('wheel',e=>{if(e.ctrlKey||e.target.closest('#scrubber-wrap'))return;e.preventDefault();const delta=Math.max(-180,Math.min(180,e.deltaY+e.deltaX));
+    s.addEventListener('wheel',e=>{if(e.ctrlKey||e.target.closest('#scrubber-wrap, #roam-controls'))return;e.preventDefault();const delta=Math.max(-180,Math.min(180,e.deltaY+e.deltaX));
       if(this.mode==='ring')this.zoomBy(-delta*.0022);
       else if(this.mode==='stack'){this.target+=delta*.012;clearTimeout(this.wheelTimer);this.wheelTimer=setTimeout(()=>{this.target=Math.round(this.target);this.wake()},150)}
-      else this.travelTarget+=delta*.008;
+      else if(e.shiftKey)this.moveFlight(delta*2,0);else this.moveFlight(e.deltaX*1.5,0,Math.max(-180,Math.min(180,e.deltaY))*.005);
       this.wake();
     },{passive:false});
     s.addEventListener('focusin',e=>{this.focused=e.target.matches(':focus-visible');this.wake()});s.addEventListener('focusout',e=>{if(!s.contains(e.relatedTarget)){this.focused=false;this.wake()}});
@@ -89,6 +107,7 @@ class SpatialAlbum {
     let active=false;
     const ease=(name,target)=>{const delta=target-this[name];if(Math.abs(delta)>.0004){this[name]+=delta*rate;active=true}else this[name]=target};
     ease('zoom',this.zoomTarget);ease('pitch',this.pitchTarget);ease('position',this.target);ease('travel',this.travelTarget);ease('spread',this.expanded?1:0);
+    ease('roamX',this.roamXTarget);ease('roamY',this.roamYTarget);ease('heading',this.headingTarget);ease('elevation',this.elevationTarget);
     if(this.mode==='ring'&&!this.drag){
       if(this.auto&&!reduced&&!this.hover&&!this.focused){this.phase+=dt*.000075;active=true}
       if(Math.abs(this.spinVelocity)>.00001&&!reduced){this.phase+=this.spinVelocity*dt;this.spinVelocity*=Math.exp(-dt/440);active=true}
@@ -100,7 +119,7 @@ class SpatialAlbum {
     const settle=reduced?1:(this.drag?.moved?Math.min(1,rate*2.4):1-Math.exp(-dt/125));
     const index=n?((Math.round(this.position)%n)+n)%n:0;
     if(this.mode==='stack'&&this.reportedIndex!==index){this.reportedIndex=index;this.callbacks.index(index);const slider=document.querySelector('#scrubber');if(document.activeElement!==slider)slider.value=index;document.querySelector('#stack-number').textContent=`${String(index+1).padStart(2,'0')} / ${n}`}
-    if(this.mode==='gallery'){const ix=((Math.floor(this.travel)%Math.max(n,1))+n)%Math.max(n,1);document.querySelector('#flight-count').textContent=`${String(ix+1).padStart(2,'0')} / ${n}`;document.querySelector('#flight-progress').style.height=((ix+1)/Math.max(1,n)*100)+'%'}
+    if(this.mode==='gallery'){const percent=Math.round((this.travel+1.5)/(this.flightBounds().depth+1.5)*100);document.querySelector('#flight-count').textContent=`纵深 ${percent}%`;document.querySelector('#flight-progress').style.height=percent+'%'}
     this.cards.forEach((card,i)=>{
       let p={x:0,y:0,z:0,rx:0,ry:0,rz:0,w:0,h:0,a:1};const r=seed(i),r2=seed(i+98);
       if(this.mode==='ring'){
@@ -122,14 +141,20 @@ class SpatialAlbum {
         p.x+=this.look.x*10;p.y+=this.look.y*6;
         p.a=Math.max(0,1-Math.max(0,ad-5)*.32);
       }else{
-        const spacing=340,span=Math.max(1,n)*spacing;let z=(this.travel-i)*spacing+360;z=((z+span-850)%span+span)%span-span+850;
-        const lane=i%8,theta=lane/8*Math.PI*2+.21+(r-.5)*.25;
-        const radius=mobile?Math.max(200,w*.59):Math.max(320,w*.34);
-        p.x=Math.cos(theta)*radius*(.82+r*.6)-this.look.x*(mobile?90:190);p.y=Math.sin(theta)*radius*(mobile?1.25:.66)-this.look.y*130;
-        p.z=z;p.w=(mobile?145:210)+r*90;p.h=p.w*(i%3===0?.78:1.25);
-        p.ry=-Math.cos(theta)*18;p.rx=Math.sin(theta)*6;p.rz=(r2-.5)*7;
-        p.a=Math.max(0,Math.min(1,(z+6200)/1700,(850-z)/170));
-        if(n<8){const a=i/n*Math.PI*2+this.travel*.4,rad=n===1?0:Math.min(w*.32,h*.32);p.x=Math.cos(a)*rad;p.y=Math.sin(a)*rad*.65;p.z=-150+Math.sin(a)*120;p.a=1;p.w=Math.min(w*.40,220);p.h=p.w*1.28}
+        const point=this.cloud[i],sparse=n<8;
+        const extentX=mobile?1150:2800,extentY=mobile?2100:1900;
+        const wx=n===1?0:point.x*(sparse?Math.min(w*1.1,900):extentX);
+        const wy=n===1?0:point.y*(sparse?Math.min(h*.85,500):extentY);
+        const wz=sparse?-180-point.z*450:280-point.z*4400;
+        const x=wx-this.roamX-this.look.x*28,y=wy-this.roamY-this.look.y*22;
+        const distance=perspective-wz-this.travel*340;
+        // Transform the fixed cloud into camera space; photos never orbit or wrap.
+        const cy=Math.cos(this.heading),sy=Math.sin(this.heading),cp=Math.cos(this.elevation),sp=Math.sin(this.elevation);
+        const dx=x*cy-distance*sy,dz=x*sy+distance*cy;
+        p.x=dx;p.y=y*cp-dz*sp;const depth=y*sp+dz*cp;p.z=perspective-depth;
+        p.w=(sparse?Math.min(w*.4,220):(mobile?160:205))+point.size*(sparse?0:145);p.h=p.w*(i%3===0?.78:1.24);
+        p.ry=point.angle*16-this.heading*180/Math.PI;p.rx=this.elevation*180/Math.PI;p.rz=point.angle*5;
+        p.a=Math.max(0,Math.min(1,(depth-140)/200,(7200-depth)/2400));
       }
       if(i>260&&this.mode==='ring')p.a=0;
       const c=this.poses[i];let changed=false;

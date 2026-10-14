@@ -36,6 +36,9 @@ body[data-mode=gallery] .photo{position:absolute;left:50%;top:50%;aspect-ratio:a
 .flight-track{height:110px;width:1px;background:#cad8cd}
 #flight-progress{display:block;width:1px;height:0;background:#577061;transition:height .4s}
 #flight-count{font-size:9px;writing-mode:vertical-rl;letter-spacing:2px}
+.flight-pad{position:absolute;left:30px;bottom:18px;z-index:4;display:flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid #d9e3de;border-radius:28px;background:#f5f7f7e8;backdrop-filter:blur(12px)}
+.flight-pad span{font-size:10px;padding:0 7px;color:#647670}.flight-pad button{width:36px;height:36px;border-radius:50%;font-size:17px}
+@media(max-width:600px){.flight-pad{left:15px;bottom:8px;padding:1px 5px}.flight-pad span{font-size:9px;padding:0 4px}.flight-pad button{width:36px;height:38px}}
 body[data-mode=gallery] .ambient-light{background:radial-gradient(ellipse,#a5c5ca44,transparent 65%);height:65%;bottom:0}
 @media(min-width:1101px){.bottom{bottom:18px}.timeline-wrap{max-width:43vw}#timeline button{padding:0 12px}.tools .icon-button{width:29px}.tools .tool-separator{margin:0 4px}.tools{margin-bottom:14px}.edition p{font-size:10px}.edition>span{font-size:17px}}
 @media(max-width:600px){

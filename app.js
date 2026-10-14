@@ -26,7 +26,7 @@ function setMode(value,announce=true){
   const texts={
     ring:['时光，自有轨迹','每个普通的日子，都在缓缓发光。','拖动旋转 · 滚轮靠近 · 点击看大图'],
     stack:['一页，又一页','指尖掠过，那些被收藏的瞬间。','拖动翻阅 · 滚轮切换 · 点击聚焦'],
-    gallery:['走进回忆深处','向前一点，再与某个瞬间重逢。','滚轮前行 · 上下滑动穿梭 · 点击看大图']
+    gallery:['漫游，日常之间','随心走走，与回忆不期而遇。','拖动上下左右漫游 · 滚轮前后 · 点击看大图']
   };
   $('#edition-title').textContent=texts[mode][0];$('#edition-sub').textContent=texts[mode][1];$('#hint').textContent=texts[mode][2];stage.setAttribute('aria-label',texts[mode][2]);
   $('#prev').setAttribute('aria-label',mode==='gallery'?'向后穿梭':'上一张或向左旋转');$('#next').setAttribute('aria-label',mode==='gallery'?'向前穿梭':'下一张或向右旋转');
@@ -37,6 +37,9 @@ function step(direction){spatial.step(direction)}
 $$('.views button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 $('#prev').onclick=()=>step(-1);$('#next').onclick=()=>step(1);$('#zoom-in').onclick=()=>spatial.zoomBy(.25);$('#zoom-out').onclick=()=>spatial.zoomBy(-.25);$('#reset-view').onclick=()=>spatial.reset();
 $('#auto-motion').onclick=()=>spatial.toggleAuto();$('#spread').onclick=()=>spatial.toggleSpread();
+$('#roam-look').onclick=()=>spatial.toggleLook();
+$$('[data-pan]').forEach(b=>b.onclick=()=>{const directions={left:[-160,0],right:[160,0],up:[0,-140],down:[0,140]};spatial.moveFlight(...directions[b.dataset.pan])});
+document.addEventListener('keydown',e=>{if(mode!=='gallery'||e.ctrlKey||e.metaKey||e.altKey||document.querySelector('dialog[open]')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;const moves={w:[0,0,.35],s:[0,0,-.35],a:[-80,0,0],d:[80,0,0],q:[0,-80,0],e:[0,80,0]};const move=moves[e.key.toLowerCase()];if(move){e.preventDefault();spatial.moveFlight(...move)}});
 $('#scrubber').oninput=e=>spatial.setIndex(Number(e.target.value));
 $('#search').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();render()});
 $('#reset-filter').onclick=()=>{if(!collection().length){$('#file-input').click();return}year='all';query='';$('#search').value='';render()};
