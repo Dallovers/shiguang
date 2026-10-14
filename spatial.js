@@ -9,14 +9,17 @@ class SpatialAlbum {
     this.heading=0;this.headingTarget=0;this.elevation=0;this.elevationTarget=0;this.roamLook=false;
     this.position=0; this.target=0; this.expanded=true; this.spread=1;
     this.look={x:0,y:0}; this.pointer={x:0,y:0}; this.drag=null; this.suppressClick=false;
+    this.touches=new Map();this.pinch=null;this.transitionUntil=0;this.domCache=[];this.lastPercent=-1;
     this.reduced=matchMedia('(prefers-reduced-motion: reduce)'); this.auto=!this.reduced.matches;
     this.hover=false; this.focused=false; this.last=0; this.raf=0; this.dirty=true;
     this.reduced.addEventListener('change',()=>{this.auto=!this.reduced.matches;this.updateControls();this.wake()});
-    new ResizeObserver(()=>{this.width=stage.clientWidth;this.height=stage.clientHeight;this.dirty=true;this.wake()}).observe(stage);
+    new ResizeObserver(()=>{this.width=stage.clientWidth;this.height=stage.clientHeight;this.stageRect=stage.getBoundingClientRect();this.dirty=true;this.wake()}).observe(stage);
     this.bind(); this.wake();
   }
   setItems(cards,items) {
     this.cards=cards; this.items=items; this.poses=cards.map(()=>({x:0,y:0,z:-1200,rx:0,ry:0,rz:0,w:40,h:50,a:0}));
+    this.domCache=cards.map(()=>({}));this.transitionUntil=performance.now()+1000;this.touches.clear();this.pinch=null;this.drag=null;
+    this.galleryLayer=null;
     this.position=this.target=0;this.travel=this.travelTarget=0;this.reportedIndex=-1;this.dirty=true;
     this.roamX=this.roamY=this.roamXTarget=this.roamYTarget=0;
     this.heading=this.headingTarget=this.elevation=this.elevationTarget=0;
@@ -35,7 +38,8 @@ class SpatialAlbum {
     this.wake();
   }
   setMode(mode) {
-    if(this.mode!==mode){this.drag=null;this.stage.classList.remove('dragging');this.hover=false;this.focused=false;this.spinVelocity=0}
+    if(mode!=='gallery'&&this.galleryLayer){this.cards.forEach(card=>this.world.append(card));this.galleryLayer.remove();this.galleryLayer=null;this.domCache.forEach(cache=>delete cache.transform)}
+    if(this.mode!==mode){this.drag=null;this.touches.clear();this.pinch=null;this.transitionUntil=performance.now()+1000;this.stage.classList.remove('dragging');this.hover=false;this.focused=false;this.spinVelocity=0;this.cards.forEach(card=>{card.style.zIndex=''})}
     this.mode=mode;this.dirty=true;this.updateControls();this.wake();
   }
   updateControls(){
@@ -45,7 +49,7 @@ class SpatialAlbum {
     document.querySelector('#flight-marker').hidden=this.mode!=='gallery'||!this.cards.length;
     document.querySelector('#roam-controls').hidden=this.mode!=='gallery'||!this.cards.length;
     const look=document.querySelector('#roam-look');look.hidden=this.mode!=='gallery';look.setAttribute('aria-pressed',String(this.roamLook));look.textContent=this.roamLook?'切回平移':'环顾四周';
-    if(this.mode==='gallery')document.querySelector('#hint').textContent=this.roamLook?'拖动环顾 · 滚轮前后 · 点击看大图':'拖动上下左右漫游 · 滚轮前后 · 点击看大图';
+    if(this.mode==='gallery')document.querySelector('#hint').textContent=this.roamLook?'单指环顾 · 双指捏合或滚轮前后':'单指平移 · 双指捏合或滚轮前后';
     document.querySelector('#scrubber').max=Math.max(0,this.cards.length-1);
   }
   toggleAuto(){this.auto=!this.auto;this.updateControls();this.wake()}
@@ -60,13 +64,21 @@ class SpatialAlbum {
   reset(){this.phase=0;this.pitchTarget=.23;this.zoomTarget=1;this.target=0;this.travelTarget=0;this.roamXTarget=this.roamYTarget=this.headingTarget=this.elevationTarget=0;this.spinVelocity=0;this.pointer={x:0,y:0};this.dirty=true;this.wake()}
   bind(){
     const s=this.stage;
+    const beginDrag=e=>{this.drag={id:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,t:performance.now(),velocity:0,vx:0,vy:0,phase:this.phase,pitch:this.pitchTarget,position:this.position,travel:this.travelTarget,cameraX:this.roamXTarget,cameraY:this.roamYTarget,heading:this.headingTarget,elevation:this.elevationTarget,moved:false}};
     s.addEventListener('pointerdown',e=>{
       if(e.button!==0||e.target.closest('#scrubber-wrap, #roam-controls'))return;
-      this.drag={id:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,t:performance.now(),velocity:0,vx:0,vy:0,phase:this.phase,pitch:this.pitchTarget,position:this.position,travel:this.travelTarget,cameraX:this.roamXTarget,cameraY:this.roamYTarget,heading:this.headingTarget,elevation:this.elevationTarget,moved:false};this.spinVelocity=0;
+      this.stageRect=s.getBoundingClientRect();
+      if(e.pointerType==='touch'&&this.mode==='gallery'){
+        this.touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if(this.touches.size>1){const[a,b]=[...this.touches.values()];this.pinch={distance:Math.max(20,Math.hypot(a.x-b.x,a.y-b.y)),x:(a.x+b.x)/2,y:(a.y+b.y)/2,travel:this.travelTarget,cameraX:this.roamXTarget,cameraY:this.roamYTarget};this.drag=null;this.suppressClick=true;s.setPointerCapture(e.pointerId);s.classList.add('dragging');return}
+      }
+      beginDrag(e);this.spinVelocity=0;
       this.suppressClick=false;this.wake();
     });
     s.addEventListener('pointermove',e=>{
-      const rect=s.getBoundingClientRect();this.pointer={x:(e.clientX-rect.left)/this.width-.5,y:(e.clientY-rect.top)/this.height-.5};
+      if(this.touches.has(e.pointerId))this.touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(this.pinch&&this.touches.size>1){const[a,b]=[...this.touches.values()],pinch=this.pinch;this.travelTarget=pinch.travel+Math.log(Math.max(20,Math.hypot(a.x-b.x,a.y-b.y))/pinch.distance)*3.5;this.roamXTarget=pinch.cameraX-((a.x+b.x)/2-pinch.x)*2;this.roamYTarget=pinch.cameraY-((a.y+b.y)/2-pinch.y)*2;this.clampFlight();this.wake();return}
+      const rect=this.stageRect;if(e.pointerType!=='touch')this.pointer={x:(e.clientX-rect.left)/this.width-.5,y:(e.clientY-rect.top)/this.height-.5};
       const d=this.drag;if(d&&d.id===e.pointerId){
         const dx=e.clientX-d.x,dy=e.clientY-d.y,now=performance.now();
         if(Math.hypot(dx,dy)>6){d.moved=true;this.suppressClick=true;s.classList.add('dragging');s.setPointerCapture(e.pointerId)}
@@ -78,7 +90,10 @@ class SpatialAlbum {
         }
       }this.wake();
     });
-    const release=e=>{const d=this.drag;if(!d||d.id!==e.pointerId)return;
+    const release=e=>{
+      this.touches.delete(e.pointerId);
+      if(this.pinch){this.pinch=null;if(s.hasPointerCapture(e.pointerId))s.releasePointerCapture(e.pointerId);if(this.touches.size){const[id,p]=[...this.touches.entries()][0];beginDrag({pointerId:id,clientX:p.x,clientY:p.y});this.drag.moved=true}else{this.drag=null;s.classList.remove('dragging');setTimeout(()=>this.suppressClick=false,150)}this.wake();return}
+      const d=this.drag;if(!d||d.id!==e.pointerId)return;
       if(d.moved&&e.type!=='pointercancel'){
         const v=performance.now()-d.t>90?0:d.velocity;
         if(this.mode==='ring')this.spinVelocity=Math.max(-.004,Math.min(.004,v*.003));
@@ -89,10 +104,10 @@ class SpatialAlbum {
     };
     s.addEventListener('pointerup',release);s.addEventListener('pointercancel',release);
     s.addEventListener('pointerleave',()=>{this.pointer={x:0,y:0};this.hover=false;this.wake()});
-    s.addEventListener('wheel',e=>{if(e.ctrlKey||e.target.closest('#scrubber-wrap, #roam-controls'))return;e.preventDefault();const delta=Math.max(-180,Math.min(180,e.deltaY+e.deltaX));
+    s.addEventListener('wheel',e=>{if((e.ctrlKey&&this.mode!=='gallery')||e.target.closest('#scrubber-wrap, #roam-controls'))return;e.preventDefault();const delta=Math.max(-180,Math.min(180,e.deltaY+e.deltaX));
       if(this.mode==='ring')this.zoomBy(-delta*.0022);
       else if(this.mode==='stack'){this.target+=delta*.012;clearTimeout(this.wheelTimer);this.wheelTimer=setTimeout(()=>{this.target=Math.round(this.target);this.wake()},150)}
-      else if(e.shiftKey)this.moveFlight(delta*2,0);else this.moveFlight(e.deltaX*1.5,0,Math.max(-180,Math.min(180,e.deltaY))*.005);
+      else if(e.ctrlKey)this.moveFlight(0,0,-e.deltaY*.018);else if(e.shiftKey)this.moveFlight(delta*2,0);else this.moveFlight(e.deltaX*1.5,0,Math.max(-180,Math.min(180,e.deltaY))*.005);
       this.wake();
     },{passive:false});
     s.addEventListener('focusin',e=>{this.focused=e.target.matches(':focus-visible');this.wake()});s.addEventListener('focusout',e=>{if(!s.contains(e.relatedTarget)){this.focused=false;this.wake()}});
@@ -103,7 +118,7 @@ class SpatialAlbum {
   frame(t){
     this.raf=0;const dt=Math.min(32,this.last?t-this.last:16);this.last=t;
     if(document.querySelector('dialog[open]')||document.hidden){this.last=0;return}
-    const reduced=this.reduced.matches,rate=reduced?1:1-Math.exp(-dt/115),n=this.cards.length;
+    const reduced=this.reduced.matches,rate=reduced?1:1-Math.exp(-dt/(this.drag||this.pinch?48:90)),n=this.cards.length;
     let active=false;
     const ease=(name,target)=>{const delta=target-this[name];if(Math.abs(delta)>.0004){this[name]+=delta*rate;active=true}else this[name]=target};
     ease('zoom',this.zoomTarget);ease('pitch',this.pitchTarget);ease('position',this.target);ease('travel',this.travelTarget);ease('spread',this.expanded?1:0);
@@ -115,13 +130,19 @@ class SpatialAlbum {
     const lx=(reduced?0:this.pointer.x)-this.look.x,ly=(reduced?0:this.pointer.y)-this.look.y;
     if(Math.abs(lx)+Math.abs(ly)>.0004){this.look.x+=lx*rate;this.look.y+=ly*rate;active=true}
     const w=this.width,h=this.height,mobile=w<600,scale=Math.min(w/1300,h/610),seed=i=>{const a=Math.sin(i*127.1+31.7)*43758.5453;return a-Math.floor(a)};
-    const perspective=mobile?800:1200;this.world.style.perspective=perspective+'px';
-    const settle=reduced?1:(this.drag?.moved?Math.min(1,rate*2.4):1-Math.exp(-dt/125));
+    const perspective=mobile?800:1200;if(this.perspective!==perspective){this.perspective=perspective;this.world.style.perspective=perspective+'px'}
+    const settle=reduced||this.mode==='gallery'&&t>this.transitionUntil?1:(this.drag?.moved?Math.min(1,rate*2.4):1-Math.exp(-dt/125));
+    const cy=Math.cos(this.heading),sy=Math.sin(this.heading),cp=Math.cos(this.elevation),sp=Math.sin(this.elevation);
+    const sharedCamera=this.mode==='gallery'&&(reduced||t>this.transitionUntil);
+    if(sharedCamera){
+      if(!this.galleryLayer){this.galleryLayer=document.createElement('div');this.galleryLayer.className='cloud-camera';this.world.append(this.galleryLayer);this.cards.forEach(card=>this.galleryLayer.append(card));this.domCache.forEach(cache=>delete cache.transform)}
+      this.galleryLayer.style.transform=`translateZ(${perspective}px) rotateX(${-this.elevation*180/Math.PI}deg) rotateY(${this.heading*180/Math.PI}deg) translateZ(${-perspective}px) translate3d(${-this.roamX-this.look.x*28}px,${-this.roamY-this.look.y*22}px,${this.travel*340}px)`;
+    }
     const index=n?((Math.round(this.position)%n)+n)%n:0;
     if(this.mode==='stack'&&this.reportedIndex!==index){this.reportedIndex=index;this.callbacks.index(index);const slider=document.querySelector('#scrubber');if(document.activeElement!==slider)slider.value=index;document.querySelector('#stack-number').textContent=`${String(index+1).padStart(2,'0')} / ${n}`}
-    if(this.mode==='gallery'){const percent=Math.round((this.travel+1.5)/(this.flightBounds().depth+1.5)*100);document.querySelector('#flight-count').textContent=`纵深 ${percent}%`;document.querySelector('#flight-progress').style.height=percent+'%'}
+    if(this.mode==='gallery'){const percent=Math.round((this.travel+1.5)/(this.flightBounds().depth+1.5)*100);if(percent!==this.lastPercent){this.lastPercent=percent;document.querySelector('#flight-count').textContent=`纵深 ${percent}%`;document.querySelector('#flight-progress').style.transform=`scaleY(${percent/100})`}}
     this.cards.forEach((card,i)=>{
-      let p={x:0,y:0,z:0,rx:0,ry:0,rz:0,w:0,h:0,a:1};const r=seed(i),r2=seed(i+98);
+      let p={x:0,y:0,z:0,rx:0,ry:0,rz:0,w:0,h:0,a:1},fixedTransform;const r=seed(i),r2=seed(i+98);
       if(this.mode==='ring'){
         const band=i%4,k=Math.floor(i/4),count=Math.ceil((n-band)/4),a=k/Math.max(count,1)*Math.PI*2+band*.54+this.phase*(.87+band*.07);
         const radius=(mobile?Math.min(w*.35,h*.34):Math.min(w*.275,h*.405))*(.73+band*.105+(r-.5)*.10);
@@ -146,27 +167,30 @@ class SpatialAlbum {
         const wx=n===1?0:point.x*(sparse?Math.min(w*1.1,900):extentX);
         const wy=n===1?0:point.y*(sparse?Math.min(h*.85,500):extentY);
         const wz=sparse?-180-point.z*450:280-point.z*4400;
+        if(sharedCamera)fixedTransform=`translate(-50%,-50%) translate3d(${wx.toFixed(2)}px,${wy.toFixed(2)}px,${wz.toFixed(2)}px) rotateY(${(point.angle*16).toFixed(2)}deg) rotateZ(${(point.angle*5).toFixed(2)}deg)`;
         const x=wx-this.roamX-this.look.x*28,y=wy-this.roamY-this.look.y*22;
         const distance=perspective-wz-this.travel*340;
         // Transform the fixed cloud into camera space; photos never orbit or wrap.
-        const cy=Math.cos(this.heading),sy=Math.sin(this.heading),cp=Math.cos(this.elevation),sp=Math.sin(this.elevation);
         const dx=x*cy-distance*sy,dz=x*sy+distance*cy;
         p.x=dx;p.y=y*cp-dz*sp;const depth=y*sp+dz*cp;p.z=perspective-depth;
         p.w=(sparse?Math.min(w*.4,220):(mobile?160:205))+point.size*(sparse?0:145);p.h=p.w*(i%3===0?.78:1.24);
-        p.ry=point.angle*16-this.heading*180/Math.PI;p.rx=this.elevation*180/Math.PI;p.rz=point.angle*5;
+        p.ry=point.angle*16+this.heading*180/Math.PI;p.rx=-this.elevation*180/Math.PI;p.rz=point.angle*5;
         p.a=Math.max(0,Math.min(1,(depth-140)/200,(7200-depth)/2400));
       }
       if(i>260&&this.mode==='ring')p.a=0;
       const c=this.poses[i];let changed=false;
       for(const key of ['x','y','z','rx','ry','rz','w','h','a']){const diff=p[key]-c[key];if(Math.abs(diff)>.025){c[key]+=diff*settle;changed=true}else c[key]=p[key]}
       if(changed)active=true;
-      const on=c.a>.015&&c.z<perspective-70;
-      card.style.visibility=on?'visible':'hidden';card.style.pointerEvents=on&&c.a>.16?'auto':'none';card.tabIndex=on&&c.a>.35?0:-1;card.setAttribute('aria-hidden',String(!on));
+      const projection=perspective/Math.max(70,perspective-c.z);
+      const inView=Math.abs(c.x)*projection<w*.5+c.w*projection*.8+80&&Math.abs(c.y)*projection<h*.5+c.h*projection*.8+80;
+      const on=c.a>.015&&c.z<perspective-70&&(this.mode!=='gallery'||inView),cache=this.domCache[i];
+      if(cache.on!==on){cache.on=on;card.style.visibility=on?'visible':'hidden';card.style.pointerEvents=on?'auto':'none';card.tabIndex=on?0:-1;card.setAttribute('aria-hidden',String(!on))}
       if(!on)return;
-      card.style.width=c.w.toFixed(2)+'px';card.style.height=c.h.toFixed(2)+'px';card.style.opacity=c.a.toFixed(3);
-      card.style.transform=`translate(-50%,-50%) translate3d(${c.x.toFixed(2)}px,${c.y.toFixed(2)}px,${c.z.toFixed(2)}px) rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg) rotateZ(${c.rz.toFixed(2)}deg)`;
-      card.style.zIndex=String(Math.round(c.z+8000));
-      const selected=this.mode==='stack'&&i===index;card.classList.toggle('selected',selected);
+      const width=c.w.toFixed(2),height=c.h.toFixed(2),opacity=c.a.toFixed(sharedCamera?2:3);
+      if(cache.w!==width){cache.w=width;card.style.width=width+'px'}if(cache.h!==height){cache.h=height;card.style.height=height+'px'}if(cache.a!==opacity){cache.a=opacity;card.style.opacity=opacity}
+      const transform=fixedTransform||`translate(-50%,-50%) translate3d(${c.x.toFixed(2)}px,${c.y.toFixed(2)}px,${c.z.toFixed(2)}px) rotateX(${c.rx.toFixed(2)}deg) rotateY(${c.ry.toFixed(2)}deg) rotateZ(${c.rz.toFixed(2)}deg)`;
+      if(cache.transform!==transform){cache.transform=transform;card.style.transform=transform}
+      const selected=this.mode==='stack'&&i===index;if(cache.selected!==selected){cache.selected=selected;card.classList.toggle('selected',selected)}
     });
     document.querySelector('#center-note').style.opacity=this.mode==='ring'&&n&&this.zoom<1.35?String(Math.max(0,1-(this.zoom-1)*3)):'0';
     if(active||this.dirty){this.dirty=false;this.wake()}else this.last=0;
